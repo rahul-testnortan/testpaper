@@ -1,4 +1,4 @@
-#include "common.h"
+#include "nortan_test.h"
 
 const int BUF_SIZE = 1024;
 
