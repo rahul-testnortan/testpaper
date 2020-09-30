@@ -11,7 +11,6 @@ const int BUF_SIZE = 1024;
 
 /**
  * @brief Idiom to read and write data across files
- *
  * @param name_input  represents the input file as char buffer
  * @param name_output represents the output as char buffer
  * @return int        if the reads and writes went through
