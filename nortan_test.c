@@ -100,11 +100,12 @@ int main(int argc, char **argv)
 {
 
     char name[32];
+    
     printf("\n\t Please enter a file name to write to\n");
     scanf("%31s", name);
     printf("\n\t You want to write to %s - ", name);
 
     read_write_loop("/dev/stdin", name);
-
+    
     return 0;
 }
