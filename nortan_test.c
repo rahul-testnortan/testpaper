@@ -3,6 +3,7 @@
 
 // USAGE :  "\n\tUsage: prog-name  < Output  FileName Location > \n";
 
+
 /**
  * @brief entry point
  *
@@ -183,6 +184,8 @@ bool check_valid_file_name(const char *file_name)
     return res;
 }
 
+// Please see carefully, all fds will be closed at end of program
+// It might seem there is an fd leak, but there isn't
 bool make_file_for_writing(const char *file_name)
 {
     bool res = false;
