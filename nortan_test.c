@@ -1,33 +1,81 @@
 #include "nortan_test.h"
+#include <sys/stat.h>
+
+// USAGE :  "\n\tUsage: prog-name  < Output  FileName Location > \n";
 
 /**
- * @brief         An idiomatic read/write impl across files
- * @todo -       - use I/O vector system calls
- *               - read from stdin in chunk of vectors
- *               - write using lsek64, keeping track
- *               - using io_submit or io_uring system calls
- *               - just use mmap or mmap64, just read the file like
- *               - linear address space
- *               - add unit tests, by seeing /proc/$PID/fd/0
+ * @brief entry point
  *
+ * @param argc how Many
+ * @param argv enviornment supplied to the program
+ * @return int return code to runtime lib
  */
-const int BUF_SIZE = 1024;
 
-#define errExit(msg)        \
-    do                      \
-    {                       \
-        perror(msg);        \
-        exit(EXIT_FAILURE); \
-    } while (0)
+int main(int argc, char **argv)
+{
+
+    /**
+   * @Production Comments
+   *                          I will use the getopt loop to parse the input
+   * arguments Defined in getopt.h from GNU or boost's command line arguments
+   *                          or, windows command line parsing from win32
+   *
+   */
+
+    if (argc < 2)
+    {
+        fprintf(stderr, "Usage: %s <  Output  FileName Location >\n", argv[0]);
+        exit(0);
+    }
+
+    /**
+   * @PRODUCTION Comments
+   *                    - an execution like ./a.out /dev/urandom WILL FAIL ! 
+   *                     -->  I will sanitize the input
+   *                      But this is subjective
+   *                      If a binary code, is provided by a malicious user, and
+   * If we  choose to use mmap implementation, even without without the PAGE
+   * EXECUTE,the mapping of the write file descriptor/handle will(not just) be
+   * bad.
+   *
+   *                      Example : Bad User provides compiled disass,
+   * relocatable  code The user also knows which file descriptos are there for
+   * the process Using lsof, he has essentially inserted a binary in the os.
+   *                      Queston : This might sound naive, because the
+   * permissions [ user, group ] of executer can be limited ( CAP_SYSADMIN -- )
+   *
+   *    --> the flpic/ aslr must be enabled
+   *    --> we must make sure if some other thread has locked the stdin already 
+   *  
+   */
+
+    if (false == check_valid_file_name(argv[1]))
+    {
+        errExit("\n\t Please provide valid, regular, file name \n");
+    }
+
+    if (false == make_file_for_writing(argv[1]))
+    {
+        errExit("Cannot open file to write to");
+    }
+
+    while (true)
+    {
+        read_write_loop("/dev/stdin", argv[1]);
+    }
+
+    // this line will never be executed
+    return 0;
+}
 
 /**
- * @brief              Idiom to read and write data across files
- *
- * @param name_input  represents the input file as char buffer
- * @param name_output represents the output as char buffer
- * @return int        if the reads and writes went through
+ * @brief
+ *      I am aware that there are redundant checks going on in the checks for fds
+ * @param name_input
+ * @param name_output
+ * @return int
  */
-static int read_write_loop(char *name_input, char *name_output)
+int read_write_loop(char *name_input, char *name_output)
 {
 
     int lenR = 0;
@@ -36,24 +84,41 @@ static int read_write_loop(char *name_input, char *name_output)
     char *buf[BUF_SIZE];
     int fin;
     int fout;
-    struct stat st;
+    struct stat stI;
+    struct stat stO;
 
     fin = open(name_input, O_RDONLY);
 
-    if (fstat(fin, &st) == -1 || (fin == -1))
+    if (fstat(fin, &stI) == -1 || (fin == -1))
     {
         errExit("\ncannot query the file location supplied  reading\n");
         exit(0);
     }
 
-    fout = open(name_output, O_WRONLY | O_CREAT | O_TRUNC, st.st_mode & 0777);
+    fout = open(name_output, O_WRONLY | O_CREAT | O_TRUNC, stO.st_mode & 0777);
 
-    if (fstat(fout, &st) == -1 || fout == -1)
+    if (fstat(fout, &stO) == -1 || fout == -1)
     {
         errExit("\ncannot query the  file for write\n");
         close(fin);
         exit(0);
     }
+
+    /**
+     * @Production Comments 
+     *      The following loop can be done faster 
+     *          using mmap on the output fd ( not stdin)
+     *              I tried this, but ran into a wired issue on my virtual machine 
+     *              Also, the calculation will be tricky to make sure the offsets 
+     *                  as last argument to mmap is PAGE ALIGNED 
+     *                  - However, unlike a file, we do not know the offset ranges 
+     *     
+     *  It can also be made faster using vectored writes ( not reads )
+     *  Using io_submit system call [ not glibc ] - I have done this work in past, 
+     *  If asked to exactly implement one of these, I will be able to it 
+     * 
+     * 
+     */
 
     while ((lenR = read(fin, buf, BUF_SIZE)) >= 0)
     {
@@ -96,16 +161,42 @@ static int read_write_loop(char *name_input, char *name_output)
     return lenR;
 }
 
-int main(int argc, char **argv)
+bool check_valid_file_name(const char *file_name)
 {
+    bool res = false;
 
-    char name[32];
-    
-    printf("\n\t Please enter a file name to write to\n");
-    scanf("%31s", name);
-    printf("\n\t You want to write to %s - ", name);
+    struct stat st;
 
-    read_write_loop("/dev/stdin", name);
-    
-    return 0;
+    if (stat(file_name, &st) == -1)
+    {
+        errExit("\n\tCannot Query the file location\n");
+    }
+    else if (S_ISREG(st.st_mode) != 0)
+    {
+        res = true;
+    }
+    else
+    {
+        res = false;
+    }
+
+    return res;
+}
+
+bool make_file_for_writing(const char *file_name)
+{
+    bool res = false;
+
+    struct stat fs;
+
+    stat(file_name, &fs);
+
+    int fd = open(file_name, O_WRONLY | O_CREAT | O_TRUNC, fs.st_mode & 0777);
+
+    if (fd == -1)
+    {
+        return res;
+    }
+    res = true;
+    return res;
 }
